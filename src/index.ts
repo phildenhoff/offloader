@@ -2,12 +2,13 @@ import { Client, type ClientConfig as PgClientConfig } from "pg";
 import { Worker } from "node:worker_threads";
 import type { QueueConfig } from "./Queues";
 
-type ExecutionStatus = {
-	result: "success" | "fail";
+type ExecutionResult = {
+	status: "completed" | "fail" | "retryable" | "executing";
 };
 type Executor<args extends object> = {
 	name: string;
-	execute: (args: args) => Promise<ExecutionStatus>;
+	queueName: QueueConfig["name"];
+	execute: (args: args) => Promise<ExecutionResult>;
 };
 type Config = ConfigInput & {
 	__brand: "Config" & never;
@@ -20,11 +21,18 @@ type ConfigInput = {
 	postgresConn: PgClientConfig;
 };
 
+const JOB_STATES = {
+	Available: "available",
+	Executing: "executing",
+} as const;
+const DEFAULT_JOB_STATE = JOB_STATES.Available;
+
 class Scheduler {
 	pgClient: Client;
 	connected: Promise<boolean>;
+	logger: ILogger;
 
-	constructor(config: Config) {
+	constructor(config: Config, logger?: ILogger) {
 		this.pgClient = new Client(config.postgresConn);
 		this.connected = new Promise((resolve) => {
 			this.pgClient
@@ -32,14 +40,21 @@ class Scheduler {
 				.then(() => resolve(true))
 				.catch(() => resolve(false));
 		});
+
+		this.logger = logger ?? console;
 	}
 
-	enqueue<Args extends object, TExec extends Executor<Args>>(
+	async enqueue<Args extends object, TExec extends Executor<Args>>(
 		executor: TExec,
 		args: Args,
 	) {
-		console.log(
+		this.logger.log(
+			"Scheduler",
 			`Scheduling ${executor.name} to run with args ${JSON.stringify(args)}`,
+		);
+		await this.pgClient.query(
+			"INSERT INTO jobs (worker, queue, args, state) VALUES ($1::text, $2::text, $3::jsonb, $4::text);",
+			[executor.name, executor.queueName, args, DEFAULT_JOB_STATE],
 		);
 	}
 }
@@ -64,4 +79,4 @@ const initWorkerPool = (config: Config) => {
 
 export { initWorkerPool, createConfig, Scheduler };
 
-export type { Executor };
+export type { ExecutionResult, Executor };

@@ -1,6 +1,9 @@
 import { resolve } from "node:path";
 import { initWorkerPool, createConfig, Scheduler } from "../../src/index";
-import { EmailOnSignupExecutor } from "./executor_emailOnSignup";
+import { EmailOnSignup } from "./executor_emailOnSignup";
+import { Logger } from "./logger";
+
+const logger = new Logger();
 
 const config = createConfig({
 	queues: [
@@ -10,7 +13,10 @@ const config = createConfig({
 		},
 	],
 	executors: {
-		EmailOnSignup: new URL("./executor_emailOnSignup.js", import.meta.url).toString(),
+		EmailOnSignup: new URL(
+			"./executor_emailOnSignup.js",
+			import.meta.url,
+		).toString(),
 	},
 	postgresConn: {
 		user: "postgres",
@@ -24,8 +30,8 @@ const config = createConfig({
 
 initWorkerPool(config);
 
-const scheduler = new Scheduler(config);
+const scheduler = new Scheduler(config, logger);
 
-scheduler.enqueue(EmailOnSignupExecutor(), {
+scheduler.enqueue(EmailOnSignup(), {
 	userId: 1234,
 });

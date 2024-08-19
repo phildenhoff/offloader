@@ -1,9 +1,15 @@
 import { Client } from "pg";
 import { Worker } from "node:worker_threads";
+const JOB_STATES = {
+    Available: "available",
+    Executing: "executing",
+};
+const DEFAULT_JOB_STATE = JOB_STATES.Available;
 class Scheduler {
     pgClient;
     connected;
-    constructor(config) {
+    logger;
+    constructor(config, logger) {
         this.pgClient = new Client(config.postgresConn);
         this.connected = new Promise((resolve) => {
             this.pgClient
@@ -11,9 +17,11 @@ class Scheduler {
                 .then(() => resolve(true))
                 .catch(() => resolve(false));
         });
+        this.logger = logger ?? console;
     }
-    enqueue(executor, args) {
-        console.log(`Scheduling ${executor.name} to run with args ${JSON.stringify(args)}`);
+    async enqueue(executor, args) {
+        this.logger.log("Scheduler", `Scheduling ${executor.name} to run with args ${JSON.stringify(args)}`);
+        await this.pgClient.query("INSERT INTO jobs (worker, queue, args, state) VALUES ($1::text, $2::text, $3::jsonb, $4::text);", [executor.name, executor.queueName, args, DEFAULT_JOB_STATE]);
     }
 }
 const createConfig = (config) => {

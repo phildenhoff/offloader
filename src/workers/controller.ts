@@ -3,7 +3,25 @@ import type { JobQueue, QueueConfig } from "../Queues";
 import { randomUUID } from "node:crypto";
 import { Worker, parentPort } from "node:worker_threads";
 import { type LabelledMessageEvent, requireLabel } from "../messages";
-import { throwDeprecation } from "node:process";
+
+const DEBUG = false;
+
+const Logger = {
+	debug: (...message: any) => {
+		if (DEBUG) {
+			console.debug("[CONTROLLER]", ...message);
+		}
+	},
+	warn: (...message: any) => {
+		console.warn("[CONTROLLER]", ...message);
+	},
+	error: (...message: any) => {
+		console.error("[CONTROLLER]", ...message);
+	},
+	log: (...message: any) => {
+		console.log("[CONTROLLER]", ...message);
+	},
+};
 
 const DEFAULT_WORKER_POOL_SIZE = 4;
 
@@ -34,30 +52,66 @@ const parseConfig = (configData: object): ValidConfig | null => {
 	return configData as ValidConfig;
 };
 
-const startWorker = (config: ValidConfig, id: string, workerPool: WorkerPool): Worker | null => {
+const startWorker = (
+	config: ValidConfig,
+	id: string,
+	workerPool: WorkerPool,
+	queues: Map<string, JobQueue>,
+	repo: ReturnType<typeof createRepo>,
+): Worker | null => {
 	const worker = new Worker(new URL("./job-worker.js", import.meta.url));
 
-	worker.on('message', (event) => {
-	 switch (event.label) {
-		case "worker_state_change": {
-       const poolWorker = workerPool.find((worker) => worker.id === event.id);
-       if (!poolWorker) return;
+	worker.on("message", async (event) => {
+		switch (event.label) {
+			case "worker_state_change": {
+				const poolWorker = workerPool.find((worker) => worker.id === event.id);
+				if (!poolWorker) return;
 
-       poolWorker.state = event.state;
-       console.log(`Updating state of worker ${event.id} to ${event.state}`);
-       break;
-		  }
+				poolWorker.state = event.state;
+				console.log(
+					"[CONTROLLER]",
+					`Updating state of worker ${event.id} to ${event.state}`,
+				);
+				break;
+			}
+			case "job_state_change": {
+				Logger.log(`Job state changed: ${JSON.stringify(event)}`);
+
+				// Remove active job from queue
+				const queue = queues.get(event.queue);
+				const { status, id: jobId } = event;
+				console.log(
+					`New status for job id ${jobId} is ${status}. = completed? ${
+						status === "completed"
+					}`,
+				);
+				if (!queue) {
+					Logger.warn(
+						`Received state change for unknown queue: ${JSON.stringify(event)}`,
+					);
+					return;
+				}
+				queue.activeJobs = queue.activeJobs.filter(
+					(job) => job.id !== event.id,
+				);
+
+				if (status === "completed") {
+					await repo.updateJobStatus(jobId, "completed");
+				} else {
+					await repo.markJobRetryable(jobId);
+				}
+			}
 		}
-	})
+	});
 
-  worker.postMessage({
-    label: "init",
-    config: {
-      executorPaths: config.executorPaths,
-      postgresConfig: config.postgresConn,
-      id
-    }
-  });
+	worker.postMessage({
+		label: "init",
+		config: {
+			executorPaths: config.executorPaths,
+			postgresConfig: config.postgresConn,
+			id,
+		},
+	});
 
 	return worker;
 };
@@ -71,11 +125,13 @@ const init = async (configData: object) => {
 
 	const postgresClient = new PgClient(config.postgresConn);
 	await postgresClient.connect();
+	const repo = createRepo(postgresClient);
 
 	const queues = new Map<string, JobQueue>();
-	for (const [name, queueConfig] of Object.entries(config.queues)) {
-		queues.set(name, {
-			name,
+	Logger.debug("Creating queues from", config.queues);
+	for (const queueConfig of config.queues) {
+		queues.set(queueConfig.name, {
+			name: queueConfig.name,
 			activeJobs: [],
 			maxConcurrency: queueConfig.maxConcurrency,
 		});
@@ -84,7 +140,7 @@ const init = async (configData: object) => {
 	const workerPool: WorkerPool = [];
 	for (let i = 0; i < DEFAULT_WORKER_POOL_SIZE; i++) {
 		const id = randomUUID();
-		const worker = startWorker(config, id, workerPool);
+		const worker = startWorker(config, id, workerPool, queues, repo);
 		if (!worker) {
 			// TODO: Log why worker was not created
 			continue;
@@ -100,7 +156,7 @@ const init = async (configData: object) => {
 	return {
 		queues,
 		workerPool,
-		postgresClient,
+		repo,
 	};
 };
 
@@ -118,14 +174,20 @@ type _JobSchema = {
 	// "smallint"/"int2"
 	max_attempts: number;
 };
-type Job = {
+export type Job = {
 	id: string;
 	worker: string;
 	queue: string;
 	args: unknown;
 	insertedAt: Date;
 	completedAt: Date | null;
-	state: "available" | "completed" | "cancelled" | "UNKNOWN";
+	state:
+		| "available"
+		| "completed"
+		| "cancelled"
+		| "executing"
+		| "retryable"
+		| "UNKNOWN";
 	attempts: number;
 	maxAttempts: number;
 };
@@ -134,13 +196,15 @@ const jobFromSchema = (dbJob: _JobSchema): Job => {
 		id: String(dbJob.id),
 		worker: dbJob.worker,
 		queue: dbJob.queue,
-		args: JSON.parse(dbJob.args),
+		args: dbJob.args,
 		insertedAt: dbJob.inserted_at,
 		completedAt: dbJob.completed_at,
 		state:
 			dbJob.state === "available" ||
 			dbJob.state === "completed" ||
-			dbJob.state === "cancelled"
+			dbJob.state === "cancelled" ||
+			dbJob.state === "executing" ||
+			dbJob.state === "retryable"
 				? dbJob.state
 				: "UNKNOWN",
 		attempts: dbJob.attempts,
@@ -148,6 +212,10 @@ const jobFromSchema = (dbJob: _JobSchema): Job => {
 	};
 };
 
+const FINAL_STATES = new Set(["completed", "cancelled", "discarded"]);
+const isFinalState = (status: string) => {
+	return FINAL_STATES.has(status);
+};
 const createRepo = (postgresClient: PgClient) => {
 	const getFirstAvailableJobForQueue = async (
 		queueName: string,
@@ -186,6 +254,37 @@ const createRepo = (postgresClient: PgClient) => {
 	return {
 		getFirstAvailableJobForQueue,
 		markJobExecuting,
+		async updateJobStatus(jobId: Job["id"], state: string) {
+			return postgresClient.query(
+				`UPDATE jobs SET state = $1::text ${isFinalState(state) ? ", completed_at = NOW()" : ""} WHERE id = $2::int4;`,
+				[state, jobId],
+			);
+		},
+		async markJobRetryable(jobId: Job["id"]) {
+			const job = (
+				await postgresClient.query(`SELECT * FROM jobs WHERE id = $1::int4;`, [
+					jobId,
+				])
+			).rows[0];
+
+			if (job.attempts >= job.max_attempts) {
+				return postgresClient.query(
+					`UPDATE jobs SET state = $1::text, completed_at = NOW() WHERE id = $2::int4;`,
+					["cancelled", jobId],
+				);
+			}
+
+			const exponentialDelayMs = Math.pow(2, job.attempts) * 1000;
+			const futureDate = new Date(Date.now() + exponentialDelayMs);
+
+			return postgresClient.query(
+				`UPDATE jobs SET
+					state = 'retryable',
+					scheduled_at = $1::timestamp
+				 WHERE id = $2::int4;`,
+				[futureDate.toISOString(), jobId],
+			);
+		},
 	};
 };
 
@@ -198,14 +297,15 @@ const filterReadyWorkers = (p: WorkerPool) => {
 const mainLoop = async (
 	queues: Map<string, JobQueue>,
 	workerPool: WorkerPool,
-	postgresClient: PgClient,
+	repo: ReturnType<typeof createRepo>,
 ) => {
 	let lastUsedWorkerIndex = -1;
-	const repo = createRepo(postgresClient);
+	Logger.log("Starting main loop");
 
 	while (true) {
 		const readyWorkers = filterReadyWorkers(workerPool);
 		if (readyWorkers.length === 0) {
+			Logger.log("No workers ready; sleeping for 3s");
 			await new Promise((resolve) => {
 				setTimeout(resolve, 3000);
 			});
@@ -215,6 +315,9 @@ const mainLoop = async (
 		let shouldSleep = true;
 
 		for (const [queueName, queue] of queues.entries()) {
+			Logger.log(
+				`Checking for jobs in queue ${queueName} ${JSON.stringify(queue)}`,
+			);
 			const jobsForQueue = await repo.getFirstAvailableJobForQueue(queueName);
 
 			if (!jobsForQueue || jobsForQueue.rowCount === 0) {
@@ -224,7 +327,7 @@ const mainLoop = async (
 			const job = jobsForQueue.rows[0];
 
 			if (queue.activeJobs.length >= queue.maxConcurrency) {
-				console.log("reached concurrency limits");
+				Logger.log(`Reached concurrency limits for ${queue.name} queue`);
 				continue;
 			}
 
@@ -295,8 +398,8 @@ const handleMessage = async (
 ) => {
 	switch (event.label) {
 		case "init": {
-			const { queues, workerPool, postgresClient } = await init(event.config);
-			mainLoop(queues, workerPool, postgresClient);
+			const { queues, workerPool, repo } = await init(event.config);
+			mainLoop(queues, workerPool, repo);
 			break;
 		}
 		default:
