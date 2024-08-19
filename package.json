@@ -14,7 +14,8 @@
   "devDependencies": {
     "@biomejs/biome": "^1.8.3",
     "@types/node": "^22.4.1",
-    "@types/pg": "^8.11.6"
+    "@types/pg": "^8.11.6",
+    "typescript": "^5.5.4"
   },
   "dependencies": {
     "pg": "^8.12.0"

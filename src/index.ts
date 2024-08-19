@@ -1,5 +1,6 @@
 import { Client, type ClientConfig as PgClientConfig } from "pg";
 import { Worker } from "node:worker_threads";
+import type { QueueConfig } from "./Queues";
 
 type ExecutionStatus = {
 	result: "success" | "fail";
@@ -9,51 +10,54 @@ type Executor<args extends object> = {
 	execute: (args: args) => Promise<ExecutionStatus>;
 };
 type Config = ConfigInput & {
-  __brand: "Config" & never;
+	__brand: "Config" & never;
 };
 type ConfigInput = {
-  queues: {
-    name: string;
-    maxConcurrency: number
-  }[],
-  executors: {
-    [key: string]: string;
-  },
-  postgresConn: PgClientConfig
-}
+	queues: QueueConfig[];
+	executors: {
+		[key: string]: string;
+	};
+	postgresConn: PgClientConfig;
+};
 
 class Scheduler {
-  pgClient: Client;
-  connected: Promise<boolean>
+	pgClient: Client;
+	connected: Promise<boolean>;
 
-  constructor(config: Config) {
-    this.pgClient = new Client(config.postgresConn);
-    this.connected = new Promise((resolve) => {
-      this.pgClient.connect().then(() => resolve(true)).catch(() => resolve(false));
-    });
-  }
+	constructor(config: Config) {
+		this.pgClient = new Client(config.postgresConn);
+		this.connected = new Promise((resolve) => {
+			this.pgClient
+				.connect()
+				.then(() => resolve(true))
+				.catch(() => resolve(false));
+		});
+	}
 
-  enqueue <Args extends object, TExec extends Executor<Args>>(executor: TExec, args: Args) {
-    console.log(`Scheduling ${executor.name} to run with args ${JSON.stringify(args)}`);
-  }
+	enqueue<Args extends object, TExec extends Executor<Args>>(
+		executor: TExec,
+		args: Args,
+	) {
+		console.log(
+			`Scheduling ${executor.name} to run with args ${JSON.stringify(args)}`,
+		);
+	}
 }
 
 const createConfig = (config: ConfigInput): Config => {
-  return (config as Config);
-}
+	return config as Config;
+};
 const initWorkerPool = (config: Config) => {
-  const controller = new Worker(new URL("../dist/workers/controller.js", import.meta.url));
+	const controller = new Worker(
+		new URL("../dist/workers/controller.js", import.meta.url),
+	);
 
-  controller.postMessage({
-    label: "init",
-    config
-  });
+	controller.postMessage({
+		label: "init",
+		config,
+	});
 };
 
-export {
-  initWorkerPool,
-  createConfig,
-  Scheduler
-}
+export { initWorkerPool, createConfig, Scheduler };
 
 export type { Executor };
