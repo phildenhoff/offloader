@@ -25,6 +25,6 @@ initWorkerPool(config);
 
 const scheduler = new Scheduler(config);
 
-scheduler.enqueue(EmailOnSignupExecutor, {
+scheduler.enqueue(EmailOnSignupExecutor(), {
 	userId: 1234,
 });
