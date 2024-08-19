@@ -4,6 +4,7 @@
   "description": "Run retryable jobs on background threads. Backed by Postgres.",
   "main": "src/index.ts",
   "scripts": {
+    "build": "tsc",
     "npm-publish": "npm publish --access public",
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "biome format --write",
