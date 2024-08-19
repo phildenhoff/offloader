@@ -24,7 +24,7 @@ import { initWorkerPool, createConfig } from "offloader";
 
 const config = createConfig({
   queues: [],
-  executors: [],
+  executors: {},
   postgresConn: {}
 });
 
