@@ -1,8 +1,4 @@
-import {
-	initWorkerPool,
-	createConfig,
-	Scheduler,
-} from "../../src/index";
+import { initWorkerPool, createConfig, Scheduler } from "../../src/index";
 import { EmailOnSignupExecutor } from "./executor_emailOnSignup";
 
 const config = createConfig({

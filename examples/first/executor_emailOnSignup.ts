@@ -1,12 +1,12 @@
-import {
-  type Executor
-} from "../../src/index"
+import type { Executor } from "../../src/index";
 
-export const EmailOnSignupExecutor: Executor = () => {
-  return {
-    name: "EmailOnSignup",
-    execute: ({userId}: {userId: number}) => {
-      console.log(`'Emailed' user ${userId}`);
-    }
-  }
-}
+export const EmailOnSignupExecutor = (): Executor<{ userId: number }> => {
+	return {
+		name: "EmailOnSignup",
+		execute: (userId) => {
+			console.log(`'Emailed' user ${userId}`);
+
+			return Promise.resolve({ result: "success" });
+		},
+	};
+};
