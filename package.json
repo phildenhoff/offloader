@@ -1,12 +1,17 @@
 {
-  "name": "@phildenhoff/offloader",
-  "version": "0.0.0",
-  "description": "Run retryable jobs on background threads. Backed by Postgres.",
-  "main": "src/index.ts",
-  "scripts": {
-    "npm-publish": "npm publish --access public",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "Phil Denhoff <phil@denhoff.ca>",
-  "license": "MIT"
+	"name": "@phildenhoff/offloader",
+	"version": "0.0.0",
+	"description": "Run retryable jobs on background threads. Backed by Postgres.",
+	"main": "src/index.ts",
+	"scripts": {
+		"npm-publish": "npm publish --access public",
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"format": "biome format --write",
+		"lint": "biome lint"
+	},
+	"author": "Phil Denhoff <phil@denhoff.ca>",
+	"license": "MIT",
+	"devDependencies": {
+		"@biomejs/biome": "^1.8.3"
+	}
 }
