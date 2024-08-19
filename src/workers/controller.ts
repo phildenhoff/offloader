@@ -1,8 +1,9 @@
 import { Client as PgClient, type ClientConfig as PgClientConfig } from "pg";
 import type { JobQueue, QueueConfig } from "../Queues";
 import { randomUUID } from "node:crypto";
-import { Worker } from "node:worker_threads";
+import { Worker, parentPort } from "node:worker_threads";
 import { type LabelledMessageEvent, requireLabel } from "../messages";
+import { throwDeprecation } from "node:process";
 
 const DEFAULT_WORKER_POOL_SIZE = 4;
 
@@ -17,26 +18,20 @@ type WorkerPool = {
 	worker: Worker;
 }[];
 
-const parseConfig = (configData: string): ValidConfig | null => {
-	let parsedJson: object | null;
-	try {
-		parsedJson = JSON.parse(configData);
-	} catch (e) {
-		return null;
-	}
+const parseConfig = (configData: object): ValidConfig | null => {
 	if (
 		!(
-			parsedJson !== null &&
-			"queues" in parsedJson &&
-			"executorPaths" in parsedJson &&
-			"postgresConn" in parsedJson
+			configData !== null &&
+			"queues" in configData &&
+			"executorPaths" in configData &&
+			"postgresConn" in configData
 		)
 	) {
 		// Config is invalid
 		return null;
 	}
 
-	return parsedJson as ValidConfig;
+	return configData as ValidConfig;
 };
 
 const startWorker = (config: ValidConfig): Worker | null => {
@@ -45,11 +40,11 @@ const startWorker = (config: ValidConfig): Worker | null => {
 	return worker;
 };
 
-const init = async (configData: string) => {
+const init = async (configData: object) => {
 	const config = parseConfig(configData);
 
 	if (config === null) {
-		throw new Error("Invalid Worker setup data");
+		throw new Error("Invalid Controller setup data");
 	}
 
 	const postgresClient = new PgClient(config.postgresConn);
@@ -160,15 +155,15 @@ const createRepo = (postgresClient: PgClient) => {
 		};
 	};
 
-  const markJobExecuting = async (
-    jobId: Job["id"]
-  ) => postgresClient.query(
-    `UPDATE jobs SET state = 'executing', attempts = attempts +1 WHERE id = $1::int4;`, [jobId]
-  );
+	const markJobExecuting = async (jobId: Job["id"]) =>
+		postgresClient.query(
+			`UPDATE jobs SET state = 'executing', attempts = attempts +1 WHERE id = $1::int4;`,
+			[jobId],
+		);
 
 	return {
 		getFirstAvailableJobForQueue,
-		markJobExecuting
+		markJobExecuting,
 	};
 };
 
@@ -207,18 +202,24 @@ const mainLoop = async (
 			const job = jobsForQueue.rows[0];
 
 			if (queue.activeJobs.length >= queue.maxConcurrency) {
-			  console.log("reached concurrency limits")
-        continue;
+				console.log("reached concurrency limits");
+				continue;
 			}
 
-      lastUsedWorkerIndex = await assignJobToWorker(queue, job, repo, readyWorkers, lastUsedWorkerIndex);
-      shouldSleep = false;
+			lastUsedWorkerIndex = await assignJobToWorker(
+				queue,
+				job,
+				repo,
+				readyWorkers,
+				lastUsedWorkerIndex,
+			);
+			shouldSleep = false;
 		}
 
 		if (shouldSleep) {
-      await new Promise(resolve => {
-        setTimeout(resolve, 1000);
-      });
+			await new Promise((resolve) => {
+				setTimeout(resolve, 1000);
+			});
 		}
 	}
 };
@@ -241,40 +242,38 @@ const addActiveJobToQueue = (queue: JobQueue, id: Job["id"]) => {
 };
 
 const assignJobToWorker = async (
-  queue: JobQueue,
-  job: Job,
-  repo: {
-    markJobExecuting: (id: Job["id"]) => Promise<unknown>
-  },
-  workerPool: WorkerPool,
-  lastUsedWorkerIndex: number
+	queue: JobQueue,
+	job: Job,
+	repo: {
+		markJobExecuting: (id: Job["id"]) => Promise<unknown>;
+	},
+	workerPool: WorkerPool,
+	lastUsedWorkerIndex: number,
 ): Promise<number> => {
-  const [worker, newIndex] = roundRobinSelectWorker(
-    workerPool,
-    lastUsedWorkerIndex
-  );
+	const [worker, newIndex] = roundRobinSelectWorker(
+		workerPool,
+		lastUsedWorkerIndex,
+	);
 
-  addActiveJobToQueue(queue, job.id);
+	addActiveJobToQueue(queue, job.id);
 
-  await repo.markJobExecuting(job.id);
+	await repo.markJobExecuting(job.id);
 
-  worker.postMessage({
-    label: "execute",
-    job
-  });
-  // From here, the Worker updates execution state.
+	worker.postMessage({
+		label: "execute",
+		job,
+	});
+	// From here, the Worker updates execution state.
 
-  return newIndex;
-}
+	return newIndex;
+};
 
 const handleMessage = async (
-	event: LabelledMessageEvent<{ config: string }>,
+	event: LabelledMessageEvent<{ config: object }>,
 ) => {
-	switch (event.data.label) {
+	switch (event.label) {
 		case "init": {
-			const { queues, workerPool, postgresClient } = await init(
-				event.data.config,
-			);
+			const { queues, workerPool, postgresClient } = await init(event.config);
 			mainLoop(queues, workerPool, postgresClient);
 			break;
 		}
@@ -282,4 +281,5 @@ const handleMessage = async (
 			console.log(`Unknown event kind: ${JSON.stringify(event)}`);
 	}
 };
-self.onmessage = requireLabel(handleMessage);
+if (!parentPort) throw Error();
+parentPort.on("message", requireLabel(handleMessage));

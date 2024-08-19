@@ -54,7 +54,11 @@ const initWorkerPool = (config: Config) => {
 
 	controller.postMessage({
 		label: "init",
-		config,
+		config: {
+			queues: config.queues,
+			executorPaths: config.executors,
+			postgresConn: config.postgresConn,
+		},
 	});
 };
 
