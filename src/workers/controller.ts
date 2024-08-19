@@ -34,8 +34,30 @@ const parseConfig = (configData: object): ValidConfig | null => {
 	return configData as ValidConfig;
 };
 
-const startWorker = (config: ValidConfig): Worker | null => {
+const startWorker = (config: ValidConfig, id: string, workerPool: WorkerPool): Worker | null => {
 	const worker = new Worker(new URL("./job-worker.js", import.meta.url));
+
+	worker.on('message', (event) => {
+	 switch (event.label) {
+		case "worker_state_change": {
+       const poolWorker = workerPool.find((worker) => worker.id === event.id);
+       if (!poolWorker) return;
+
+       poolWorker.state = event.state;
+       console.log(`Updating state of worker ${event.id} to ${event.state}`);
+       break;
+		  }
+		}
+	})
+
+  worker.postMessage({
+    label: "init",
+    config: {
+      executorPaths: config.executorPaths,
+      postgresConfig: config.postgresConn,
+      id
+    }
+  });
 
 	return worker;
 };
@@ -62,7 +84,7 @@ const init = async (configData: object) => {
 	const workerPool: WorkerPool = [];
 	for (let i = 0; i < DEFAULT_WORKER_POOL_SIZE; i++) {
 		const id = randomUUID();
-		const worker = startWorker(config);
+		const worker = startWorker(config, id, workerPool);
 		if (!worker) {
 			// TODO: Log why worker was not created
 			continue;

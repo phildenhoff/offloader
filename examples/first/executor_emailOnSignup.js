@@ -1,6 +1,8 @@
-import type { Executor } from "../../src/index";
 
-export const EmailOnSignupExecutor = (): Executor<{ userId: number }> => {
+/**
+ * @returns {Executor<{userId: number}>}
+*/
+export const EmailOnSignupExecutor = () => {
 	return {
 		name: "EmailOnSignup",
 		execute: (userId) => {

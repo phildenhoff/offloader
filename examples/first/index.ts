@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { initWorkerPool, createConfig, Scheduler } from "../../src/index";
 import { EmailOnSignupExecutor } from "./executor_emailOnSignup";
 
@@ -9,7 +10,7 @@ const config = createConfig({
 		},
 	],
 	executors: {
-		EmailOnSignup: "./executor_emailOnSignup.ts",
+		EmailOnSignup: new URL("./executor_emailOnSignup.js", import.meta.url).toString(),
 	},
 	postgresConn: {
 		user: "postgres",
