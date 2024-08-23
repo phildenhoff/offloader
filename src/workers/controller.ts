@@ -68,23 +68,15 @@ const startWorker = (
 				if (!poolWorker) return;
 
 				poolWorker.state = event.state;
-				console.log(
-					"[CONTROLLER]",
-					`Updating state of worker ${event.id} to ${event.state}`,
-				);
+				Logger.debug( `Updating state of worker ${event.id} to ${event.state}`);
 				break;
 			}
 			case "job_state_change": {
-				Logger.log(`Job state changed: ${JSON.stringify(event)}`);
+				Logger.debug(`Job state changed: ${JSON.stringify(event)}`);
 
 				// Remove active job from queue
 				const queue = queues.get(event.queue);
 				const { status, id: jobId } = event;
-				console.log(
-					`New status for job id ${jobId} is ${status}. = completed? ${
-						status === "completed"
-					}`,
-				);
 				if (!queue) {
 					Logger.warn(
 						`Received state change for unknown queue: ${JSON.stringify(event)}`,
@@ -300,12 +292,11 @@ const mainLoop = async (
 	repo: ReturnType<typeof createRepo>,
 ) => {
 	let lastUsedWorkerIndex = -1;
-	Logger.log("Starting main loop");
 
 	while (true) {
 		const readyWorkers = filterReadyWorkers(workerPool);
 		if (readyWorkers.length === 0) {
-			Logger.log("No workers ready; sleeping for 3s");
+			Logger.debug("No workers ready; sleeping for 3s");
 			await new Promise((resolve) => {
 				setTimeout(resolve, 3000);
 			});
@@ -315,7 +306,7 @@ const mainLoop = async (
 		let shouldSleep = true;
 
 		for (const [queueName, queue] of queues.entries()) {
-			Logger.log(
+			Logger.debug(
 				`Checking for jobs in queue ${queueName} ${JSON.stringify(queue)}`,
 			);
 			const jobsForQueue = await repo.getFirstAvailableJobForQueue(queueName);
@@ -327,7 +318,7 @@ const mainLoop = async (
 			const job = jobsForQueue.rows[0];
 
 			if (queue.activeJobs.length >= queue.maxConcurrency) {
-				Logger.log(`Reached concurrency limits for ${queue.name} queue`);
+				Logger.debug(`Reached concurrency limits for ${queue.name} queue`);
 				continue;
 			}
 
@@ -402,8 +393,8 @@ const handleMessage = async (
 			mainLoop(queues, workerPool, repo);
 			break;
 		}
-		default:
-			console.log(`Unknown event kind: ${JSON.stringify(event)}`);
+    default:
+      {}
 	}
 };
 if (!parentPort) throw Error();

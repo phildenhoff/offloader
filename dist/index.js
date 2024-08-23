@@ -20,7 +20,6 @@ class Scheduler {
         this.logger = logger ?? console;
     }
     async enqueue(executor, args) {
-        this.logger.log("Scheduler", `Scheduling ${executor.name} to run with args ${JSON.stringify(args)}`);
         await this.pgClient.query("INSERT INTO jobs (worker, queue, args, state) VALUES ($1::text, $2::text, $3::jsonb, $4::text);", [executor.name, executor.queueName, args, DEFAULT_JOB_STATE]);
     }
 }

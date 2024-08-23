@@ -30,8 +30,6 @@ const init = async (config: {
 		state: "ready",
 		id: workerId,
 	});
-
-	console.log("[WORKER]", `Worker ${workerId} ready to execute jobs`);
 };
 
 const executeJob = async (job: Job): Promise<ExecutionResult> => {
