@@ -14,7 +14,10 @@ export const EmailOnSignup = () => {
 				"EmailOnSignupExecutor",
 				`'Emailed' user ${JSON.stringify(userId)}`,
 			);
-			logger.log("system", "offloader works! You can end the process now with Ctrl+c")
+			logger.log(
+				"system",
+				"offloader works! You can end the process now with Ctrl+c",
+			);
 
 			return Promise.resolve({ status: "completed" });
 		},
