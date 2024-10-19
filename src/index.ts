@@ -26,6 +26,7 @@ const JOB_STATES = {
 	Executing: "executing",
 } as const;
 const DEFAULT_JOB_STATE = JOB_STATES.Available;
+const DEFAULT_MAX_ATTEMPTS = 3;
 
 class Scheduler {
 	pgClient: Client;
@@ -49,8 +50,8 @@ class Scheduler {
 		args: Args,
 	) {
 		await this.pgClient.query(
-			"INSERT INTO jobs (worker, queue, args, state) VALUES ($1::text, $2::text, $3::jsonb, $4::text);",
-			[executor.name, executor.queueName, args, DEFAULT_JOB_STATE],
+			"INSERT INTO jobs (worker, queue, args, state, max_attempts) VALUES ($1::text, $2::text, $3::jsonb, $4::text, $5::smallint);",
+			[executor.name, executor.queueName, args, DEFAULT_JOB_STATE, DEFAULT_MAX_ATTEMPTS],
 		);
 	}
 }
@@ -58,6 +59,7 @@ class Scheduler {
 const createConfig = (config: ConfigInput): Config => {
 	return config as Config;
 };
+
 const initWorkerPool = (config: Config) => {
 	const controller = new Worker(
 		new URL("../dist/workers/controller.js", import.meta.url),
