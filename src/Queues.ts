@@ -1,4 +1,4 @@
-import { Job } from "./workers/controller";
+import type { Job } from "./workers/controller";
 
 export type QueueConfig = {
 	name: string;

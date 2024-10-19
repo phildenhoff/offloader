@@ -7,18 +7,18 @@ import { type LabelledMessageEvent, requireLabel } from "../messages";
 const DEBUG = false;
 
 const Logger = {
-	debug: (...message: any) => {
+	debug: (...message: string[]) => {
 		if (DEBUG) {
 			console.debug("[CONTROLLER]", ...message);
 		}
 	},
-	warn: (...message: any) => {
+	warn: (...message: string[]) => {
 		console.warn("[CONTROLLER]", ...message);
 	},
-	error: (...message: any) => {
+	error: (...message: string[]) => {
 		console.error("[CONTROLLER]", ...message);
 	},
-	log: (...message: any) => {
+	log: (...message: string[]) => {
 		console.log("[CONTROLLER]", ...message);
 	},
 };
@@ -254,19 +254,19 @@ const createRepo = (postgresClient: PgClient) => {
 		},
 		async markJobRetryable(jobId: Job["id"]) {
 			const job = (
-				await postgresClient.query(`SELECT * FROM jobs WHERE id = $1::int4;`, [
+				await postgresClient.query("SELECT * FROM jobs WHERE id = $1::int4;", [
 					jobId,
 				])
 			).rows[0];
 
 			if (job.attempts >= job.max_attempts) {
 				return postgresClient.query(
-					`UPDATE jobs SET state = $1::text, completed_at = NOW() WHERE id = $2::int4;`,
+					"UPDATE jobs SET state = $1::text, completed_at = NOW() WHERE id = $2::int4;",
 					["cancelled", jobId],
 				);
 			}
 
-			const exponentialDelayMs = Math.pow(2, job.attempts) * 1000;
+			const exponentialDelayMs = 2 ** job.attempts * 1000;
 			const futureDate = new Date(Date.now() + exponentialDelayMs);
 
 			return postgresClient.query(

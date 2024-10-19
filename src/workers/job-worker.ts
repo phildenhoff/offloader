@@ -1,8 +1,8 @@
 import { parentPort } from "node:worker_threads";
 import { Client as PgClient, type ClientConfig as PgClientConfig } from "pg";
 import { requireLabel } from "src/messages";
-import { Job } from "./controller";
-import { ExecutionResult, Executor } from "src";
+import type { Job } from "./controller";
+import type { ExecutionResult, Executor } from "src";
 
 let workerId: string | null;
 let client: PgClient;

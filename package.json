@@ -8,7 +8,7 @@
 		"npm-publish": "npm publish --access public",
 		"test": "echo \"Error: no test specified\" && exit 1",
 		"format": "biome format --write",
-		"lint": "biome lint"
+		"lint": "biome lint src"
 	},
 	"author": "Phil Denhoff <phil@denhoff.ca>",
 	"license": "MIT",
