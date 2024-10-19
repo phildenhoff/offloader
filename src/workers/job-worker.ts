@@ -42,8 +42,16 @@ const executeJob = async (job: Job): Promise<ExecutionResult> => {
 	if (!jobExecutor) {
 		return Promise.resolve({ status: "retryable" });
 	}
+	console.log(
+		"Attempting to execute job",
+		job,
+		"with executor",
+		jobExecutor,
+		"and args",
+		args,
+	);
 
-	const status = await jobExecutor.execute(args);
+	const status = await jobExecutor.execute(args, job);
 
 	return status;
 };

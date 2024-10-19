@@ -1,6 +1,7 @@
-import { Client, type ClientConfig as PgClientConfig } from "pg";
 import { Worker } from "node:worker_threads";
+import { Client, type ClientConfig as PgClientConfig } from "pg";
 import type { QueueConfig } from "./Queues";
+import type { Job } from "./workers/controller";
 
 type ExecutionResult = {
 	status: "completed" | "fail" | "retryable" | "executing";
@@ -8,7 +9,9 @@ type ExecutionResult = {
 type Executor<args extends object> = {
 	name: string;
 	queueName: QueueConfig["name"];
-	execute: (args: args) => Promise<ExecutionResult>;
+	execute:
+		| ((args: args) => Promise<ExecutionResult>)
+		| ((args: args, job: Job) => Promise<ExecutionResult>);
 };
 type Config = ConfigInput & {
 	__brand: "Config" & never;
@@ -49,14 +52,21 @@ class Scheduler {
 		executor: TExec,
 		args: Args,
 		{
-		  scheduledAt = new Date(),
+			scheduledAt = new Date(),
 		}: {
-		  scheduledAt?: Date;
-		}
+			scheduledAt?: Date;
+		},
 	) {
 		await this.pgClient.query(
 			"INSERT INTO jobs (worker, queue, args, state, max_attempts, scheduled_at) VALUES ($1::text, $2::text, $3::jsonb, $4::text, $5::smallint, $6::timestamptz);",
-			[executor.name, executor.queueName, args, DEFAULT_JOB_STATE, DEFAULT_MAX_ATTEMPTS, scheduledAt],
+			[
+				executor.name,
+				executor.queueName,
+				args,
+				DEFAULT_JOB_STATE,
+				DEFAULT_MAX_ATTEMPTS,
+				scheduledAt,
+			],
 		);
 	}
 }

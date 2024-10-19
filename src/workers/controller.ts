@@ -68,7 +68,7 @@ const startWorker = (
 				if (!poolWorker) return;
 
 				poolWorker.state = event.state;
-				Logger.debug( `Updating state of worker ${event.id} to ${event.state}`);
+				Logger.debug(`Updating state of worker ${event.id} to ${event.state}`);
 				break;
 			}
 			case "job_state_change": {
@@ -120,7 +120,7 @@ const init = async (configData: object) => {
 	const repo = createRepo(postgresClient);
 
 	const queues = new Map<string, JobQueue>();
-	Logger.debug("Creating queues from", config.queues);
+	Logger.debug("Creating queues from", JSON.stringify(config.queues));
 	for (const queueConfig of config.queues) {
 		queues.set(queueConfig.name, {
 			name: queueConfig.name,
@@ -159,6 +159,7 @@ type _JobSchema = {
 	args: string;
 	inserted_at: Date;
 	completed_at: Date | null;
+	scheduled_at: Date | null;
 	state: string;
 
 	// "smallint"/"int2"
@@ -173,6 +174,7 @@ export type Job = {
 	args: unknown;
 	insertedAt: Date;
 	completedAt: Date | null;
+	scheduledAt: Date | null;
 	state:
 		| "available"
 		| "completed"
@@ -191,6 +193,7 @@ const jobFromSchema = (dbJob: _JobSchema): Job => {
 		args: dbJob.args,
 		insertedAt: dbJob.inserted_at,
 		completedAt: dbJob.completed_at,
+		scheduledAt: dbJob.scheduled_at,
 		state:
 			dbJob.state === "available" ||
 			dbJob.state === "completed" ||
@@ -393,8 +396,8 @@ const handleMessage = async (
 			mainLoop(queues, workerPool, repo);
 			break;
 		}
-    default:
-      {}
+		default: {
+		}
 	}
 };
 if (!parentPort) throw Error();
