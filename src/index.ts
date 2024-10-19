@@ -6,7 +6,11 @@ import type { Job } from "./workers/controller";
 type ExecutionResult = {
 	status: "completed" | "fail" | "retryable" | "executing";
 };
-type Executor<args extends object> = {
+/**
+ * This is your warning: be careful.
+ */
+type SafelyJsonSerializable = object;
+type Executor<args extends SafelyJsonSerializable> = {
 	name: string;
 	queueName: QueueConfig["name"];
 	execute:

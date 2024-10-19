@@ -21,7 +21,7 @@ const init = async (config) => {
 	});
 };
 const executeJob = async (job) => {
-	const args = JSON.parse(job.args);
+  const args = job.args;
 	const jobExecutor = executors.find(
 		(executor) => executor.name === job.worker,
 	);
