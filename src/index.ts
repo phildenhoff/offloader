@@ -48,10 +48,15 @@ class Scheduler {
 	async enqueue<Args extends object, TExec extends Executor<Args>>(
 		executor: TExec,
 		args: Args,
+		{
+		  scheduledAt = new Date(),
+		}: {
+		  scheduledAt?: Date;
+		}
 	) {
 		await this.pgClient.query(
-			"INSERT INTO jobs (worker, queue, args, state, max_attempts) VALUES ($1::text, $2::text, $3::jsonb, $4::text, $5::smallint);",
-			[executor.name, executor.queueName, args, DEFAULT_JOB_STATE, DEFAULT_MAX_ATTEMPTS],
+			"INSERT INTO jobs (worker, queue, args, state, max_attempts, scheduled_at) VALUES ($1::text, $2::text, $3::jsonb, $4::text, $5::smallint, $6::timestamptz);",
+			[executor.name, executor.queueName, args, DEFAULT_JOB_STATE, DEFAULT_MAX_ATTEMPTS, scheduledAt],
 		);
 	}
 }
